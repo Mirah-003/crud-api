@@ -35,7 +35,7 @@ def init_db():
 
     cursor.execute("SELECT COUNT(*) FROM tasks")
     count = cursor.fetchone()[0]
-    
+
     if count == 0:
         cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", ("Complete stage 0 and commit to git", 1))
         cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", ("Complete stage 1 and commit to git", 1))
@@ -61,36 +61,37 @@ def health():
         
         "status": "ok"
     }
-tasks = [
-    { 
-        "id": 1, 
-        "title": "Complete stage 0 and commit to git",   
-        "done": True
-    },
-    { 
-        "id": 2, 
-        "title": "Complete stage 1 and commit to git",   
-        "done": True
-    },
-
-    { 
-        "id": 3, 
-        "title": "Complete stage 2 and commit to git",   
-        "done": False
-    }
-]
 
 @app.get("/tasks", summary="List all tasks")
 def get_tasks():
-    return tasks
-
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tasks")
+    rows = cursor.fetchall()
+    conn.close()
+    task_list = []
+    for row in rows:
+        task_list.append({
+            "id": row["id"],
+            "title": row["title"],
+            "done": bool(row["done"])
+        })
+    return task_list
 
 @app.get("/tasks/{task_id}", summary="Get a single task by ID")
-def get_task(task_id: int): 
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
-    raise HTTPException(status_code=404, detail="Task not found")
+def get_task(task_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {
+        "id": row["id"],
+        "title": row["title"],
+        "done": bool(row["done"])
+    }
 
 @app.post("/tasks", status_code=201, summary="Create a new task")
 def create_task(task: Task):
