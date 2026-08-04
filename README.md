@@ -1,48 +1,62 @@
-# Task API with SQLite Database
+# Task API with SQLite
 
-A lightweight RESTful CRUD API for managing to-do tasks, built with Python, FastAPI, Pydantic, and SQLite for permanent data persistence.
+This is a task management API I built using Python, FastAPI, and SQLite. It started as an in-memory CRUD app from Assignment 1, and in this assignment I swapped the storage to a real SQLite database so that tasks actually persist between server restarts.
 
-## Database Overview
+I had used SQLite before but never really understood it deeply. Building this project stage by stage helped me finally see how the pieces connect — from writing raw SQL to seeing the results show up in the SQLite Viewer.
 
-This API uses **SQLite** (`tasks.db`) for storing tasks persistently on disk across server restarts.
+## My Process
 
-### Why SQLite?
-- **Zero Configuration:** No external database server (like PostgreSQL or MySQL) is required to install or manage.
-- **Single File Persistence:** The entire database lives in a local file (`tasks.db`), making it portable and easy to inspect.
-- **Built into Python:** Uses Python's standard `sqlite3` module without external database drivers.
+I worked through this assignment in stages, committing after each one:
 
-### Schema Design (`tasks` table)
+1. **Stage 0** — Set up the database connection and wrote the `init_db()` function to create the table and seed it with starter tasks. Getting the structure right (what goes where in the file, what syntax to use) was honestly the trickiest part early on.
+2. **Stage 1** — Replaced the in-memory `GET` endpoints with `SELECT` queries.
+3. **Stage 2** — Replaced the `POST` endpoint with an `INSERT` query. The moment I stopped the server, restarted it, and saw my data still there was when it really clicked.
+4. **Stage 3** — Replaced `PUT` and `DELETE` with `UPDATE` and `DELETE FROM` queries.
+5. **Stage 4** — Explored the database visually using the SQLite Viewer extension in VS Code.
+6. **Stage 5** — Documented everything in this README.
+7. **Bonus** — Added search, filtering by status, sorting, and a `/stats` endpoint that uses `COUNT(*)` directly in SQL.
+8. **Stage 6** — Wrote a migration prompt, generated an AI version in quarantine (`ai-version/`), and compared the two implementations side by side.
 
-| Column | Type | Constraints | Description |
-|---|---|---|---|
-| `id` | `INTEGER` | `PRIMARY KEY AUTOINCREMENT` | Unique auto-incrementing identifier |
-| `title` | `TEXT` | `NOT NULL` | Description of the task |
-| `done` | `BOOLEAN` | `NOT NULL DEFAULT 0` | Completion status (`0` = false, `1` = true) |
+My approach was: read the documentation first, then watch tutorials to see how things come together visually, then work through pseudocode and translate it into actual code. When I hit errors, I would read the error message carefully, figure out what it means, and take note of it so I don't repeat the same mistake. The moment things really clicked was when I put my pseudocode and my actual code side by side and could clearly see what each line was doing instead of just following instructions.
 
-### Example SQL Queries
+## What I Learned
 
-```sql
--- Read all tasks
-SELECT * FROM tasks;
-
--- Read all completed tasks
-SELECT * FROM tasks WHERE done = 1;
-
--- Insert a new task
-INSERT INTO tasks (title, done) VALUES ('Learn SQLite', 0);
-
--- Update task status
-UPDATE tasks SET done = 1 WHERE id = 4;
-
--- Delete a task
-DELETE FROM tasks WHERE id = 4;
-```
+- The API endpoints don't change at all when you swap from memory to a database. Persistence is an implementation detail behind the same interface.
+- SQLite is literally just a file (`tasks.db`) sitting in my project folder. No server to install, no configuration.
+- Parameterized queries (`?`) exist to prevent SQL injection. You never glue user input directly into a SQL string.
+- `conn.commit()` is crucial — without it, your changes don't actually save to disk.
+- `conn.row_factory = sqlite3.Row` lets you access columns by name (like `row["title"]`) instead of by index number.
 
 ---
 
-## Database Viewer
+## Database
 
-Tasks table inspected via the SQLite Viewer:
+The API stores tasks in a SQLite database file called `tasks.db`.
+
+### Table schema
+
+| Column | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | `INTEGER` | `PRIMARY KEY AUTOINCREMENT` | Auto-incrementing unique ID |
+| `title` | `TEXT` | `NOT NULL` | Task description |
+| `done` | `BOOLEAN` | `NOT NULL DEFAULT 0` | 0 = not done, 1 = done |
+
+### SQL queries used in this project
+
+```sql
+SELECT * FROM tasks;
+SELECT * FROM tasks WHERE id = ?;
+SELECT * FROM tasks WHERE done = 1;
+SELECT * FROM tasks WHERE title LIKE '%search%';
+INSERT INTO tasks (title, done) VALUES (?, ?);
+UPDATE tasks SET title = ?, done = ? WHERE id = ?;
+DELETE FROM tasks WHERE id = ?;
+SELECT COUNT(*) FROM tasks;
+```
+
+### Database Viewer
+
+Here is the tasks table viewed through the SQLite Viewer VS Code extension:
 
 ![Database Viewer](database.png)
 
@@ -50,32 +64,28 @@ Tasks table inspected via the SQLite Viewer:
 
 ## How to run it
 
-1. **Clone this repo**
+1. Clone this repo
    ```bash
    git clone https://github.com/hafsat-abdulhamid/crud-api.git
    cd crud-api
    ```
 
-2. **Create virtual environment**
+2. Create and activate virtual environment
    ```bash
    python3 -m venv .venv
-   ```
-
-3. **Activate virtual environment**
-   ```bash
    source .venv/bin/activate
    ```
 
-4. **Install dependencies**
+3. Install dependencies
    ```bash
    pip install -r requirements.txt
    ```
 
-5. **Start the server**
+4. Start the server
    ```bash
    uvicorn main:app --reload
    ```
-   The API will be running at `http://localhost:8000`.
+   The API runs at `http://localhost:8000`. The database file (`tasks.db`) is created automatically on first startup.
 
 ---
 
@@ -85,12 +95,12 @@ Tasks table inspected via the SQLite Viewer:
 |---|---|---|---|
 | `GET` | `/` | API info | `200` |
 | `GET` | `/health` | Health check | `200` |
-| `GET` | `/tasks` | List all tasks from SQLite (with search/filter/sort) | `200` |
-| `GET` | `/tasks/{id}` | Get one task by ID from SQLite | `200`, `404` |
-| `GET` | `/stats` | Task statistics (total, completed, pending) | `200` |
-| `POST` | `/tasks` | Create a task in SQLite | `201`, `400` |
-| `PUT` | `/tasks/{id}` | Update a task in SQLite | `200`, `400`, `404` |
-| `DELETE` | `/tasks/{id}` | Delete a task from SQLite | `204`, `404` |
+| `GET` | `/tasks` | List tasks (supports `?search=`, `?done=`, `?sort=title`) | `200` |
+| `GET` | `/tasks/{id}` | Get one task | `200`, `404` |
+| `GET` | `/stats` | Task counts (total, completed, pending) | `200` |
+| `POST` | `/tasks` | Create a task | `201`, `400` |
+| `PUT` | `/tasks/{id}` | Update a task | `200`, `400`, `404` |
+| `DELETE` | `/tasks/{id}` | Delete a task | `204`, `404` |
 
 ---
 
@@ -112,63 +122,37 @@ content-type: application/json
 
 ## Swagger UI
 
-Interactive OpenAPI documentation is available at `http://localhost:8000/docs` while the server is running:
+Interactive docs at `http://localhost:8000/docs`:
 
 ![Swagger UI](swagger.png)
 
 ---
 
-## AI vs Me (Stage 6: The AI Rematch)
+## AI vs Me (Stage 6)
 
-In Stage 6, a full migration prompt was written to instruct an AI assistant to migrate the in-memory CRUD API to SQLite in quarantine (`ai-version/main.py`), and the resulting code was compared against the hand-crafted implementation.
+For Stage 6, I wrote a detailed prompt specifying the migration requirements and had an AI generate its own version in `ai-version/main.py`. My hand-built code stays untouched — the AI version is quarantined in its own folder.
 
-### The Migration Prompt
+### The prompt I wrote
 
 ```markdown
 You are a senior Python backend engineer.
 
-I have an existing FastAPI CRUD application that currently stores tasks in memory. Your job is to migrate the application to SQLite while preserving the API behavior.
+I have an existing FastAPI CRUD application that currently stores tasks in memory.
+Your job is to migrate the application to SQLite while preserving the API behavior.
 
-## Requirements
-
-### Tech Stack
-* Python
-* FastAPI
-* SQLite using Python's built-in `sqlite3` module
-* Do not use SQLAlchemy or any ORM.
-
-### Database
-Create a SQLite database containing a table named `tasks`.
-The table should have the following schema:
-* `id` INTEGER PRIMARY KEY AUTOINCREMENT
-* `title` TEXT NOT NULL
-* `done` BOOLEAN DEFAULT 0
-
-When the application starts:
-* Create the `tasks` table if it does not already exist.
-* Seed the database with exactly three default tasks only if the table is empty.
-* Do not reseed every time the application restarts.
-
-### API Behavior
-Keep the existing endpoint behavior exactly the same.
-- GET /tasks: Return all tasks.
-- GET /tasks/{id}: Return the requested task (404 if not found).
-- POST /tasks: Create a new task (201 Created, 400 on empty/whitespace title).
-- PUT /tasks/{id}: Update task title and completion status (404 if not found, 400 on empty/whitespace title).
-- DELETE /tasks/{id}: Delete the task (204 No Content, 404 if not found).
-
-### Database Access
-* Use parameterized SQL queries (`?`) for every query that accepts user input.
-* Do not build SQL statements using string concatenation or f-strings.
+Requirements:
+- Python, FastAPI, SQLite (built-in sqlite3 module, no ORM)
+- Table: tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, done BOOLEAN DEFAULT 0)
+- On startup: create table if missing, seed 3 default tasks only if table is empty
+- Endpoints: GET /tasks, GET /tasks/{id}, POST /tasks (201), PUT /tasks/{id}, DELETE /tasks/{id} (204)
+- 404 when task not found, 400 on empty/whitespace title
+- Use parameterized queries (?) everywhere, no string concatenation for SQL
 ```
 
-### Concrete Differences Found (Diff Review)
+### Three things I noticed when comparing
 
-1. **Batch Seeding with `executemany` (AI did better):**
-   The AI version used `cursor.executemany("INSERT INTO tasks VALUES (?, ?)", [...])` to insert all 3 seed tasks in a single database transaction rather than 3 consecutive `cursor.execute()` calls.
+1. **The AI used `executemany` for seeding** — it batched all 3 inserts into one call instead of 3 separate `cursor.execute()` lines. That's more efficient but I didn't know about `executemany` when I wrote mine.
 
-2. **Automatic Trimming on Write (AI design choice):**
-   The AI automatically sanitized user input by calling `.strip()` before inserting or updating strings (`task.title.strip()`), ensuring trailing whitespace is never persisted.
+2. **The AI stripped whitespace before saving** — it called `.strip()` on the title before inserting/updating, so trailing spaces never get stored. My version validates but doesn't trim before saving.
 
-3. **Missing Query Features & Stats Endpoint (Hand-built was more feature-rich):**
-   Because the prompt focused only on core CRUD, the AI did not include the SQL `LIKE` search, status filtering, alphabetical sorting, or the `GET /stats` summary endpoint that our hand-built API provides.
+3. **The AI didn't include any extras** — no search, no filtering, no sorting, no `/stats`. It only built what the prompt asked for, which makes sense. My version has more features because I built those as bonus tasks.
