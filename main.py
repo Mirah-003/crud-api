@@ -114,36 +114,55 @@ def create_task(task: Task):
 
 @app.put("/tasks/{task_id}", summary="Update an existing task")
 def update_task(task_id: int, update_data: TaskUpdate):
-    found_task = None
-    for task in tasks:
-        if task["id"] == task_id:
-            found_task = task
-            break
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    if found_task is None:
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    task = cursor.fetchone()
+
+    if task is None:
+        conn.close()
         raise HTTPException(status_code=404, detail="Task not found")
+
+    new_title = task["title"]
+    new_done = task["done"]
 
     if update_data.title is not None:
         if not update_data.title.strip():
+            conn.close()
             raise HTTPException(status_code=400, detail="Title cannot be empty")
-        found_task["title"] = update_data.title
+        new_title = update_data.title
 
     if update_data.done is not None:
-        found_task["done"] = update_data.done
+        new_done = 1 if update_data.done else 0
 
-    return found_task
+    cursor.execute(
+        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+        (new_title, new_done, task_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": task_id,
+        "title": new_title,
+        "done": bool(new_done)
+    }
 
 
 @app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task")
 def delete_task(task_id: int):
-    found_task = None
-    for task in tasks:
-        if task["id"] == task_id:
-            found_task = task
-            break
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-    if found_task is None:
+    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    task = cursor.fetchone()
+
+    if task is None:
+        conn.close()
         raise HTTPException(status_code=404, detail="Task not found")
 
-    tasks.remove(found_task)
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
     return
