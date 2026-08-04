@@ -57,13 +57,35 @@ def health():
         "status": "ok"
     }
 
-@app.get("/tasks", summary="List all tasks")
-def get_tasks():
+@app.get("/tasks", summary="List all tasks with optional search, filter, and sort")
+def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: Optional[str] = None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks")
+
+    query = "SELECT * FROM tasks"
+    conditions = []
+    params = []
+
+    if search is not None and search.strip():
+        conditions.append("title LIKE ?")
+        params.append(f"%{search.strip()}%")
+
+    if done is not None:
+        conditions.append("done = ?")
+        params.append(1 if done else 0)
+
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    if sort == "title":
+        query += " ORDER BY title ASC"
+    else:
+        query += " ORDER BY id ASC"
+
+    cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
     conn.close()
+
     task_list = []
     for row in rows:
         task_list.append({
@@ -72,6 +94,28 @@ def get_tasks():
             "done": bool(row["done"])
         })
     return task_list
+
+@app.get("/stats", summary="Get task statistics")
+def get_stats():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM tasks")
+    total = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE done = 1")
+    completed = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM tasks WHERE done = 0")
+    pending = cursor.fetchone()[0]
+
+    conn.close()
+
+    return {
+        "total_tasks": total,
+        "completed_tasks": completed,
+        "pending_tasks": pending
+    }
 
 @app.get("/tasks/{task_id}", summary="Get a single task by ID")
 def get_task(task_id: int):
