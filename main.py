@@ -1,7 +1,14 @@
+import os
+from typing import Optional
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+# Load environment variables from .env file
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 class Task(BaseModel):
     title: str
@@ -12,31 +19,37 @@ class TaskUpdate(BaseModel):
 
 app = FastAPI()
 
+# Establish database connection using psycopg2
 def get_db_connection():
-    conn = sqlite3.connect("tasks.db")
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
+# Initialize PostgreSQL table & seed starter data if empty
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
-            done BOOLEAN NOT NULL DEFAULT 0
+            done BOOLEAN NOT NULL DEFAULT FALSE
         )
     """)
+    conn.commit()
 
-    cursor.execute("SELECT COUNT(*) FROM tasks")
-    count = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS count FROM tasks")
+    count = cursor.fetchone()["count"]
 
     if count == 0:
-        cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", ("Complete stage 0 and commit to git", 1))
-        cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", ("Complete stage 1 and commit to git", 1))
-        cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", ("Complete stage 2 and commit to git", 0))
-    conn.commit()
+        cursor.execute("INSERT INTO tasks (title, done) VALUES (%s, %s)", ("Complete stage 0 and commit to git", True))
+        cursor.execute("INSERT INTO tasks (title, done) VALUES (%s, %s)", ("Complete stage 1 and commit to git", True))
+        cursor.execute("INSERT INTO tasks (title, done) VALUES (%s, %s)", ("Complete stage 2 and commit to git", False))
+        conn.commit()
+
+    cursor.close()
     conn.close()
+
 init_db()
 
 @app.get("/", summary="Root endpoint - API Information")
