@@ -147,6 +147,7 @@ def get_task(task_id: int):
         "done": bool(row["done"])
     }
 
+# Create new task
 @app.post("/tasks", status_code=201, summary="Create a new task")
 def create_task(task: Task):
     if not task.title.strip():
@@ -154,27 +155,32 @@ def create_task(task: Task):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("INSERT INTO tasks (title, done) VALUES (?, ?)", (task.title, 0))
+    cursor.execute(
+        "INSERT INTO tasks (title, done) VALUES (%s, %s) RETURNING *",
+        (task.title, False)
+    )
+    new_task = cursor.fetchone()
     conn.commit()
-
-    new_id = cursor.lastrowid
+    cursor.close()
     conn.close()
 
     return {
-        "id": new_id,
-        "title": task.title,
-        "done": False
+        "id": new_task["id"],
+        "title": new_task["title"],
+        "done": bool(new_task["done"])
     }
 
+# Update existing task
 @app.put("/tasks/{task_id}", summary="Update an existing task")
 def update_task(task_id: int, update_data: TaskUpdate):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     task = cursor.fetchone()
 
     if task is None:
+        cursor.close()
         conn.close()
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -183,18 +189,20 @@ def update_task(task_id: int, update_data: TaskUpdate):
 
     if update_data.title is not None:
         if not update_data.title.strip():
+            cursor.close()
             conn.close()
             raise HTTPException(status_code=400, detail="Title cannot be empty")
         new_title = update_data.title
 
     if update_data.done is not None:
-        new_done = 1 if update_data.done else 0
+        new_done = update_data.done
 
     cursor.execute(
-        "UPDATE tasks SET title = ?, done = ? WHERE id = ?",
+        "UPDATE tasks SET title = %s, done = %s WHERE id = %s",
         (new_title, new_done, task_id)
     )
     conn.commit()
+    cursor.close()
     conn.close()
 
     return {
@@ -203,20 +211,22 @@ def update_task(task_id: int, update_data: TaskUpdate):
         "done": bool(new_done)
     }
 
-
+# Delete task
 @app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task")
 def delete_task(task_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     task = cursor.fetchone()
 
     if task is None:
+        cursor.close()
         conn.close()
         raise HTTPException(status_code=404, detail="Task not found")
 
-    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
     conn.commit()
+    cursor.close()
     conn.close()
     return
