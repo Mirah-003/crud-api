@@ -55,21 +55,16 @@ init_db()
 @app.get("/", summary="Root endpoint - API Information")
 def read_root():
     return {
-
         "name": "Task API",
         "version": "1.0",
         "endpoints": ["/tasks"]
-
     }
-
 
 @app.get("/health", summary="Health check")
 def health():
-    return { 
-        
-        "status": "ok"
-    }
+    return {"status": "ok"}
 
+# Read all tasks with search, filter, and sorting
 @app.get("/tasks", summary="List all tasks with optional search, filter, and sort")
 def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: Optional[str] = None):
     conn = get_db_connection()
@@ -80,12 +75,12 @@ def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: O
     params = []
 
     if search is not None and search.strip():
-        conditions.append("title LIKE ?")
+        conditions.append("title LIKE %s")
         params.append(f"%{search.strip()}%")
 
     if done is not None:
-        conditions.append("done = ?")
-        params.append(1 if done else 0)
+        conditions.append("done = %s")
+        params.append(done)
 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -97,6 +92,7 @@ def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: O
 
     cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     task_list = []
@@ -108,20 +104,22 @@ def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: O
         })
     return task_list
 
+# Compute task statistics
 @app.get("/stats", summary="Get task statistics")
 def get_stats():
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM tasks")
-    total = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS total FROM tasks")
+    total = cursor.fetchone()["total"]
 
-    cursor.execute("SELECT COUNT(*) FROM tasks WHERE done = 1")
-    completed = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS completed FROM tasks WHERE done = TRUE")
+    completed = cursor.fetchone()["completed"]
 
-    cursor.execute("SELECT COUNT(*) FROM tasks WHERE done = 0")
-    pending = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) AS pending FROM tasks WHERE done = FALSE")
+    pending = cursor.fetchone()["pending"]
 
+    cursor.close()
     conn.close()
 
     return {
@@ -130,15 +128,19 @@ def get_stats():
         "pending_tasks": pending
     }
 
+# Read single task by ID
 @app.get("/tasks/{task_id}", summary="Get a single task by ID")
 def get_task(task_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+    cursor.execute("SELECT * FROM tasks WHERE id = %s", (task_id,))
     row = cursor.fetchone()
+    cursor.close()
     conn.close()
+
     if row is None:
         raise HTTPException(status_code=404, detail="Task not found")
+
     return {
         "id": row["id"],
         "title": row["title"],
