@@ -1,7 +1,25 @@
+# ==========================================
+# FLYRANK AI — ASSIGNMENT W2/W3: TASK CRUD API & DATABASE STACK
+# ==========================================
+
+# ==========================================
+# TODO 0 — Imports & Environment Setup
+# ==========================================
+
+# PSEUDOCODE:
+# 1. Import required modules:
+#    - Operating system and typing (os, Optional)
+#    - Environment variable reader (load_dotenv from python-dotenv)
+#    - Web framework (FastAPI, HTTPException, status)
+#    - Data validation library (BaseModel from pydantic)
+#    - PostgreSQL database adapter (psycopg2, RealDictCursor)
+# 2. Load environment variables from .env file:
+#    - Read DATABASE_URL
+
 import os
 from typing import Optional
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -10,6 +28,16 @@ from psycopg2.extras import RealDictCursor
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+
+# ==========================================
+# TODO 1 — Pydantic Request Schemas
+# ==========================================
+
+# PSEUDOCODE:
+# Define data models for task creation and task updates:
+# - Task (creation): requires title (non-empty string)
+# - TaskUpdate (partial update): optional title and optional done boolean flag
+
 class Task(BaseModel):
     title: str
 
@@ -17,14 +45,22 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = None
     done: Optional[bool] = None
 
-app = FastAPI()
 
-# Establish database connection using psycopg2
+# ==========================================
+# TODO 2 — Database Connection & Table Initialization
+# ==========================================
+
+# PSEUDOCODE:
+# 1. Helper function `get_db_connection`:
+#    - Establish connection to PostgreSQL using DATABASE_URL and RealDictCursor.
+# 2. Function `init_db`:
+#    - Execute `CREATE TABLE IF NOT EXISTS tasks (id SERIAL PRIMARY KEY, title TEXT NOT NULL, done BOOLEAN NOT NULL DEFAULT FALSE)`.
+#    - Check if table is empty; seed starter tasks if count == 0.
+
 def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
-# Initialize PostgreSQL table & seed starter data if empty
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -50,7 +86,19 @@ def init_db():
     cursor.close()
     conn.close()
 
+# Initialize PostgreSQL table & seed starter data if empty
 init_db()
+
+app = FastAPI(title="Task Management CRUD API")
+
+
+# ==========================================
+# TODO 3 — Root & Health Check Endpoints
+# ==========================================
+
+# PSEUDOCODE:
+# Route: GET "/" -> returns API name, version, and endpoints.
+# Route: GET "/health" -> returns {"status": "ok"}.
 
 @app.get("/", summary="Root endpoint - API Information")
 def read_root():
@@ -64,7 +112,15 @@ def read_root():
 def health():
     return {"status": "ok"}
 
-# Read all tasks with search, filter, and sorting
+
+# ==========================================
+# TODO 4 — List Tasks & Compute Task Statistics
+# ==========================================
+
+# PSEUDOCODE:
+# Route: GET "/tasks" -> accepts search, done filter, and sort order parameters.
+# Route: GET "/stats" -> returns total_tasks, completed_tasks, and pending_tasks counts.
+
 @app.get("/tasks", summary="List all tasks with optional search, filter, and sort")
 def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: Optional[str] = None):
     conn = get_db_connection()
@@ -104,7 +160,6 @@ def get_tasks(search: Optional[str] = None, done: Optional[bool] = None, sort: O
         })
     return task_list
 
-# Compute task statistics
 @app.get("/stats", summary="Get task statistics")
 def get_stats():
     conn = get_db_connection()
@@ -128,7 +183,17 @@ def get_stats():
         "pending_tasks": pending
     }
 
-# Read single task by ID
+
+# ==========================================
+# TODO 5 — Read Single Task by ID
+# ==========================================
+
+# PSEUDOCODE:
+# Route: GET "/tasks/{task_id}"
+# Input: task_id integer path parameter.
+# Process: Query task by ID.
+# Error Case: If row is None -> raise 404 HTTPException("Task not found").
+
 @app.get("/tasks/{task_id}", summary="Get a single task by ID")
 def get_task(task_id: int):
     conn = get_db_connection()
@@ -139,7 +204,7 @@ def get_task(task_id: int):
     conn.close()
 
     if row is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     return {
         "id": row["id"],
@@ -147,11 +212,21 @@ def get_task(task_id: int):
         "done": bool(row["done"])
     }
 
-# Create new task
-@app.post("/tasks", status_code=201, summary="Create a new task")
+
+# ==========================================
+# TODO 6 — Create New Task
+# ==========================================
+
+# PSEUDOCODE:
+# Route: POST "/tasks"
+# Input: Task body
+# Validation: If title is empty/whitespace -> raise 400 HTTPException.
+# Output Status: 201 CREATED
+
+@app.post("/tasks", status_code=status.HTTP_201_CREATED, summary="Create a new task")
 def create_task(task: Task):
     if not task.title.strip():
-        raise HTTPException(status_code=400, detail="Title cannot be empty")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title cannot be empty")
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -170,7 +245,16 @@ def create_task(task: Task):
         "done": bool(new_task["done"])
     }
 
-# Update existing task
+
+# ==========================================
+# TODO 7 — Update Existing Task
+# ==========================================
+
+# PSEUDOCODE:
+# Route: PUT "/tasks/{task_id}"
+# Input: task_id path parameter, TaskUpdate body
+# Process: Fetch task; if None -> raise 404. Update title/done fields dynamically.
+
 @app.put("/tasks/{task_id}", summary="Update an existing task")
 def update_task(task_id: int, update_data: TaskUpdate):
     conn = get_db_connection()
@@ -182,7 +266,7 @@ def update_task(task_id: int, update_data: TaskUpdate):
     if task is None:
         cursor.close()
         conn.close()
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     new_title = task["title"]
     new_done = task["done"]
@@ -191,7 +275,7 @@ def update_task(task_id: int, update_data: TaskUpdate):
         if not update_data.title.strip():
             cursor.close()
             conn.close()
-            raise HTTPException(status_code=400, detail="Title cannot be empty")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Title cannot be empty")
         new_title = update_data.title
 
     if update_data.done is not None:
@@ -211,8 +295,16 @@ def update_task(task_id: int, update_data: TaskUpdate):
         "done": bool(new_done)
     }
 
-# Delete task
-@app.delete("/tasks/{task_id}", status_code=204, summary="Delete a task")
+
+# ==========================================
+# TODO 8 — Delete Task
+# ==========================================
+
+# PSEUDOCODE:
+# Route: DELETE "/tasks/{task_id}"
+# Process: Check task existence; if None -> 404; else DELETE. Status code: 204 NO CONTENT.
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete a task")
 def delete_task(task_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -223,7 +315,7 @@ def delete_task(task_id: int):
     if task is None:
         cursor.close()
         conn.close()
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
     cursor.execute("DELETE FROM tasks WHERE id = %s", (task_id,))
     conn.commit()

@@ -1,89 +1,99 @@
-# Task API — Containerized PostgreSQL Stack (A3)
+# Task API — Containerized PostgreSQL CRUD Service
 
-A production-grade RESTful Task Management API built with **FastAPI**, **PostgreSQL**, and **Docker Compose**.
-
-## Features
-- **Full CRUD Endpoints**: `GET /tasks`, `GET /tasks/{id}`, `POST /tasks`, `PUT /tasks/{id}`, `DELETE /tasks/{id}`
-- **PostgreSQL Persistence**: Data persists across container restarts using Docker Volume (`taskdata`)
-- **Zero-Config Setup**: `.env.example` template with git-ignored `.env` secret management
-- **Docker Compose Orchestration**: Single command bring-up with database healthcheck dependency ordering
-
----
-
-## Quick Start (One Command)
-
-1. Clone repository & enter directory:
-   ```bash
-   git clone https://github.com/Mirah-003/crud-api.git
-   cd crud-api
-   ```
-
-2. Create environment configuration:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. Launch the full stack:
-   ```bash
-   docker compose up --build
-   ```
-
-4. API is available at `http://localhost:8000`
-   - Interactive OpenAPI Docs: `http://localhost:8000/docs`
-
-5. Stop stack:
-   ```bash
-   docker compose down
-   ```
-
----
-
-## API Endpoints Table
-
-| Method | Endpoint | Description | Expected Status |
-|---|---|---|---|
-| `GET` | `/` | API Root & Metadata | `200 OK` |
-| `GET` | `/health` | Application Health Check | `200 OK` |
-| `GET` | `/stats` | Task Aggregation Statistics | `200 OK` |
-| `GET` | `/tasks` | List Tasks (supports `search`, `done`, `sort`) | `200 OK` |
-| `GET` | `/tasks/{id}` | Get Single Task by ID | `200 OK` / `404 Not Found` |
-| `POST` | `/tasks` | Create New Task | `201 Created` / `400 Bad Request` |
-| `PUT` | `/tasks/{id}` | Update Task Title/Done State | `200 OK` / `404 Not Found` |
-| `DELETE` | `/tasks/{id}` | Delete Task | `204 No Content` / `404 Not Found` |
-
----
-
-## Sample `curl -i` Verification Output
-
-```http
-HTTP/1.1 201 Created
-date: Sat, 15 Aug 2026 09:15:00 GMT
-server: uvicorn
-content-length: 53
-content-type: application/json
-
-{"id":4,"title":"Test persistence task","done":false}
-```
-
----
-
-## Database Verification
+A production-grade RESTful Task Management API built with **FastAPI**, **PostgreSQL**, and **Docker Compose**. This service provides full CRUD functionality, statistics computation, dynamic search, filtering, and sorting, backed by a persistent relational database engine.
 
 ![Database Verification](db-screenshot.png)
 
 ---
 
-## Architectural Insight: Why Storage is Just an Implementation Detail
+## 🚀 Features
 
-Across Assignments A1, A2, and A3, our FastAPI core application logic and external API HTTP contracts (`/tasks`) remained virtually unchanged:
-1. **A1**: In-memory Python lists
-2. **A2**: SQLite local file database (`tasks.db`)
-3. **A3**: PostgreSQL relational database engine running in Docker
-
-Because our HTTP route definitions and response schemas stayed consistent, client applications consuming this API did not require a single line of code change when we swapped from SQLite to containerized PostgreSQL. This demonstrates that **storage is merely an implementation detail behind an interface boundary**.
+- **Full CRUD Endpoints**: Create (`POST`), Read (`GET`), Update (`PUT`), and Delete (`DELETE`) tasks.
+- **Search, Filter & Sort (`GET /tasks`)**: Supports substring searching (`search`), completion state filtering (`done`), and custom sorting (`sort=title`).
+- **Aggregation Metrics (`GET /stats`)**: Computes live task statistics (`total_tasks`, `completed_tasks`, `pending_tasks`).
+- **PostgreSQL Persistence**: Data persists across container restarts using a managed Docker Volume (`taskdata`).
+- **Docker Compose Orchestration**: Single-command stack bring-up featuring PostgreSQL healthcheck dependency ordering (`pg_isready`).
+- **Interactive Swagger Documentation**: Auto-generated interactive OpenAPI docs available at `/docs`.
 
 ---
 
-## AI vs Me (Stage 6 Comparison)
-- **AI Approach**: Defaulted to single-stage container build without explicit container healthchecks, leading to database connection race conditions upon container boot.
-- **Human Senior Engineer Refinement**: Implemented explicit `healthcheck` (`pg_isready`) in `docker-compose.yml` with `depends_on.condition: service_healthy`, ensuring strict startup order and zero runtime connection failures.
+## 🛠️ Tech Stack & Dependencies
+
+- **Language**: Python 3.10+
+- **Web Framework**: [FastAPI](https://fastapi.tiangolo.com/)
+- **ASGI Server**: [Uvicorn](https://www.uvicorn.org/)
+- **Database Engine**: [PostgreSQL 15](https://www.postgresql.org/)
+- **Database Driver**: [psycopg2](https://www.psycopg.org/) (`RealDictCursor`)
+- **Containerization**: Docker & Docker Compose
+- **Schema Validation**: [Pydantic v2](https://docs.pydantic.dev/)
+
+---
+
+## 📦 Environment Variable Setup
+
+Sensitive database credentials and connection strings are managed via `.env`.
+
+> **CRITICAL SECURITY NOTE**: The `.env` file is excluded from Git version control via `.gitignore`. Never commit database passwords or production connection strings to version control.
+
+### Setup Instructions:
+
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Inspect or update `.env`:
+   ```env
+   DATABASE_URL=postgresql://taskuser:taskpassword@db:5432/taskdb
+   ```
+
+---
+
+## ⚙️ Quickstart (Single Command)
+
+Clone the repository and launch the full containerized stack using Docker Compose:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Mirah-003/crud-api.git
+cd crud-api
+
+# 2. Set up environment configuration
+cp .env.example .env
+
+# 3. Launch containerized stack
+docker compose up --build
+```
+
+- **API Base URL**: `http://localhost:8000`
+- **Interactive Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+To stop the containerized services:
+```bash
+docker compose down
+```
+
+---
+
+## 📖 API Reference Table
+
+| Method | Endpoint | Description | Query Parameters | Expected Status |
+| :--- | :--- | :--- | :--- | :---: |
+| `GET` | `/` | API Root & Metadata | None | `200 OK` |
+| `GET` | `/health` | Application Health Check | None | `200 OK` |
+| `GET` | `/stats` | Task Aggregation Statistics | None | `200 OK` |
+| `GET` | `/tasks` | List Tasks with Filtering | `search`, `done`, `sort` | `200 OK` |
+| `GET` | `/tasks/{id}` | Read Single Task by ID | Path: `id` (integer) | `200 OK` / `404 Not Found` |
+| `POST` | `/tasks` | Create New Task | Body: `{"title": "..."}` | `201 Created` / `400 Bad Request` |
+| `PUT` | `/tasks/{id}` | Update Task Title/Done State | Body: `{"title": "...", "done": true}` | `200 OK` / `404 Not Found` |
+| `DELETE` | `/tasks/{id}` | Delete Task | Path: `id` (integer) | `204 No Content` / `404 Not Found` |
+
+---
+
+## 🧠 Architectural Insight: Storage as an Implementation Detail
+
+Across Assignments A1, A2, and A3, the core FastAPI HTTP application contract (`/tasks`) remained completely invariant:
+1. **Assignment A1**: In-memory Python lists
+2. **Assignment A2**: Local SQLite database file (`tasks.db`)
+3. **Assignment A3**: Containerized PostgreSQL relational engine
+
+Because HTTP route signatures and Pydantic schemas remained fixed, client applications consuming this API required zero code changes when we migrated storage providers. This proves that **storage is merely an implementation detail behind an interface boundary**.
